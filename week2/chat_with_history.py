@@ -7,6 +7,8 @@ if not api_key:
     print('环境变量出错')
     exit(1)
 
+# api_key = '0' #测试异常处理
+#这一段只是创建一个客户端对象,把参数存到对象里,没有发任何网络请求，所以根本不会抛异常，没必要用try except捕获
 client = OpenAI(
     api_key= api_key,
     base_url= "https://api.deepseek.com"
@@ -34,11 +36,15 @@ while True:
         break
 
     messages.append({'role': 'user', 'content': user_input})
-    req = client.chat.completions.create(
-        model = 'deepseek-v4-pro',
-        messages = messages,
-        stream = False
-    )
+    try:
+        req = client.chat.completions.create(
+            model = 'deepseek-v4-pro',
+            messages = messages,
+            stream = False
+        )
+    except Exception as e:
+        print(f'调用API出错: {e}')
+        exit(1)
 
     reply = req.choices[0].message.content
     messages.append({'role': 'assistant', 'content': reply})
