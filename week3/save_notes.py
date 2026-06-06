@@ -16,6 +16,7 @@ client = OpenAI(
     base_url="https://api.deepseek.com"
 )
 
+
 tools =[
     {   
         'type': 'function',
@@ -74,6 +75,8 @@ def save_note(f_para):
     except Exception as e:
         print(f'保存笔记失败，error: {e}')
         return f'保存笔记失败，原因为：{e}'
+    
+available_tools = {'save_note': save_note}
 
 
 messages = []
@@ -95,19 +98,21 @@ while True:
         messages.pop()
         continue
 
-    # print(f'content: {content}')
-    if message.tool_calls is not None and len(message.tool_calls)>0:
-        tool = message.tool_calls[0]
+    # 考虑模型返回存在多个tool_cslls
+    if message.tool_calls:
         messages.append(message)
-        tool_id = tool.id
-        f_name = tool.function.name
-        f_para = json.loads(tool.function.arguments)  #是个str
-        if f_name == 'save_note':
-            results = save_note(f_para)
-            messages.append({'role': 'tool', 'tool_call_id': tool_id, 'content': results})
+        for tool in message.tool_calls:
+            tool_id = tool.id
+            f_name = tool.function.name
+            f_para = json.loads(tool.function.arguments)  #是个str
+            func = available_tools.get(f_name)
+            if func:
+                results = func(f_para)
+                messages.append({'role': 'tool', 'tool_call_id': tool_id, 'content': results})
+            else:
+                messages.append({'role': 'tool', 'tool_call_id': tool_id, 'content': f'未知工具: {f_name}'})
         message = send_message(messages)
         print(f'Model:\t{message.content}')
-        # print(f'f_name: {f_name}{f_name.__class__}, f_para: {f_para}{f_para.__class__}')  调试代码
     else:
         messages.append({'role': 'assistant', 'content': message.content})
         print(f'Model:\t{message.content}')
