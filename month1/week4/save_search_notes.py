@@ -126,7 +126,11 @@ while True:
         for tool in message.tool_calls:
             tool_id = tool.id
             f_name = tool.function.name
-            f_para = json.loads(tool.function.arguments)
+            try:
+                f_para = json.loads(tool.function.arguments)
+            except Exception as e:
+                messages.append({'role': 'tool', 'tool_call_id': tool_id, 'content': '工具参数错误'})
+                continue
             func = available_tools.get(f_name)
             if func:
                 result = func(f_para)
@@ -140,7 +144,6 @@ while True:
             print(f'工具调用后模型回复失败：{e}')
             messages.append({'role': 'assistant', 'content': '抱歉，处理您的请求时遇到错误。如果刚进行了保存操作，可能已完成，请勿重复保存。'})
             print('Model:\t' + messages[-1]['content'])
-            #代码健壮性修改3：用continue的话，message因为send_message失败，没有被第二次返回的正确message覆盖，因此还是那个带tool_calls的message，在下一轮while循环判断时候依然会进循环，导致死循环
             break
     else:
         messages.append({'role': 'assistant', 'content': message.content})
