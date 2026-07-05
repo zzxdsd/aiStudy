@@ -48,24 +48,59 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "del_note",
+            "description": "用来删除用户笔记里的内容，用户需要提供删除的笔记id，当用户说“帮我删掉第五条笔记”时触发",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "description": "要删除的笔记id"}
+                },
+                "required": ["id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_note",
+            "description": "列出用户保存的所有笔记，适用于用户想要浏览、回顾全部笔记的场景",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
 ]
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+NOTE_FILE = os.path.join(BASE_DIR, "note.json")
 
 
 def load_note() -> list[dict]:
-    if os.path.exists("note.json"):
-        with open("note.json", "r", encoding="utf-8") as f:
+    if os.path.exists(NOTE_FILE):
+        with open(NOTE_FILE, "r", encoding="utf-8") as f:
             notes = json.load(f)
     else:
         notes = []
     return notes
 
 
-def save_note(params: dict) -> str:
+def list_note(params: dict) -> tuple[str, str]:
+    notes = load_note()
+    if not notes:
+        return "ok", "暂无笔记"
+    return "ok", f"全部笔记为： {notes}"
+
+
+def save_note(params: dict) -> tuple[bool, str]:
+    # 返回 (True|False, 消息)
     try:
         notes = load_note()
     except Exception as e:
-        print(f"保存笔记时读文件出错，错误原因为：{e}")
-        return f"保存笔记时读文件出错，错误原因：{e}"
+        return False, f"保存笔记时读文件出错，错误原因：{e}"
 
     # 并发隐患
     next_id = max((item["id"] for item in notes), default=0) + 1
@@ -76,33 +111,32 @@ def save_note(params: dict) -> str:
     new_params = {**params, "id": next_id}
     notes.append(new_params)
     try:
-        with open("note.json", "w", encoding="utf-8") as f:
+        with open(NOTE_FILE, "w", encoding="utf-8") as f:
             json.dump(notes, f, ensure_ascii=False, indent=2)
-        return "保存成功"
+        return True, "保存成功"
     except Exception as e:
-        print(f"写文件出错，错误原因为：{e}")
-        return f"保存失败，失败原因为：{e}"
+        return False, f"保存失败，失败原因为：{e}"
 
 
-def del_note(id: int) -> str:
+def del_note(params: dict) -> tuple[str, str]:
+    # 返回 ("ok" | "not_found" | "error", 消息)
     try:
         notes = load_note()
     except Exception as e:
-        print(f"删除笔记时读文件出错，错误原因为：{e}")
-        return f"删除笔记时读文件出错，错误原因：{e}"
+        return "error", f"删除笔记时读文件出错，错误原因：{e}"
 
+    raw_id = params.get("id")
+    if raw_id is None:
+        return "not_found", "缺少笔记ID"
+    id = int(raw_id)
     if id <= 0:
-        print(f"该条笔记不存在")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="该条笔记不存在"
-        )
+        return "not_found", "该条笔记不存在"
 
     # ori_len = len(notes)
     # new_notes = [item for item in notes if item['id'] != id]
 
     # if len(new_notes) == ori_len:
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='该条笔记不存在')
-
+    #     return "该条笔记不存在"
     flag = False
     for i in range(len(notes) - 1, -1, -1):
         if notes[i]["id"] == id:
@@ -111,27 +145,23 @@ def del_note(id: int) -> str:
             break
 
     if not flag:
-        print(f"该条笔记不存在")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="该条笔记不存在"
-        )
+        return "not_found", "该条笔记不存在"
 
     try:
-        with open("note.json", "w", encoding="utf-8") as f:
+        with open(NOTE_FILE, "w", encoding="utf-8") as f:
             json.dump(notes, f, ensure_ascii=False, indent=2)
-        return "删除成功"
+        return "ok", "删除成功"
     except Exception as e:
-        print(f"删除笔记失败， 错误原因为{e}")
-        return f"删除笔记失败， 错误原因为{e}"
+        return "error", f"删除笔记失败， 错误原因为{e}"
 
 
-def search_note(params: dict) -> str:
+def search_note(params: dict) -> tuple[str, str]:
+    # 返回 ("ok" | "not_found" | "error", 消息)
     result = []
     try:
         notes = load_note()
     except Exception as e:
-        print(f"搜索笔记时读文件出错，错误原因为：{e}")
-        return f"搜索笔记时读文件出错，错误原因为：{e}"
+        return "error", f"搜索笔记时读文件出错，错误原因为：{e}"
 
     key_word = params.get("key_word", "").lower()
     for item in notes:
@@ -140,19 +170,23 @@ def search_note(params: dict) -> str:
         if key_word in content or key_word in tag:
             result.append(item)
     if result:
-        print(f"result的类型：{result.__class__}")
-        return f"搜索到相关笔记，相关笔记为：{result}"
+        return "ok", f"搜索到相关笔记，相关笔记为：{result}"
     else:
-        return "未找到相关笔记"
+        return "not_found", "未找到相关笔记"
 
 
-available_tools = {"save_note": save_note, "search_note": search_note}
+available_tools = {
+    "save_note": save_note,
+    "search_note": search_note,
+    "del_note": del_note,
+    "list_note": list_note,
+}
 messages = {}
 
 
-def send_message(messages: list):
+def send_message(msg_list: list):
     response = client.chat.completions.create(
-        model="deepseek-chat", messages=messages, tools=tools
+        model="deepseek-chat", messages=msg_list, tools=tools
     )
     return response.choices[0].message
 
@@ -162,7 +196,7 @@ app = FastAPI()
 
 class ChatRequest(BaseModel):
     request: str | None = None
-    session_id: str | None = None
+    session_id: str
 
 
 class ChatResponse(BaseModel):
@@ -172,10 +206,6 @@ class ChatResponse(BaseModel):
 class SaveRequest(BaseModel):
     content: str
     tag: str | None = None
-
-
-class SearchRequest(BaseModel):
-    key_word: str | None = None
 
 
 # 调用llm
@@ -190,6 +220,7 @@ def chat_server(chatRequest: ChatRequest):
     session_messages.append({"role": "user", "content": user_input})
     try:
         message = send_message(session_messages)
+        print(f"llm第一次的返回为：{message}")
     except Exception as e:
         session_messages.pop()
         raise HTTPException(
@@ -210,7 +241,10 @@ def chat_server(chatRequest: ChatRequest):
                 )
                 continue
             if func:
-                result = func(params)
+                try:
+                    _, result = func(params)
+                except Exception as e:
+                    result = f"工具执行出错： {e}"
                 session_messages.append(
                     {"role": "tool", "tool_call_id": tool_id, "content": result}
                 )
@@ -225,6 +259,7 @@ def chat_server(chatRequest: ChatRequest):
 
         try:
             message = send_message(session_messages)
+            print(f"llm第二次的返回为：{message}")
         except Exception as e:
             session_messages.append(
                 {
@@ -241,8 +276,8 @@ def chat_server(chatRequest: ChatRequest):
 # 保存笔记
 @app.post("/notes")
 def save_server(saveRequest: SaveRequest):
-    result = save_note(saveRequest.model_dump())
-    if "失败" in result:
+    ok, result = save_note(saveRequest.model_dump())
+    if not ok:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result)
     return {"message": result}
 
@@ -261,8 +296,10 @@ def get_server():
 def search_server(key_word: str | None = None):
     if key_word is None:
         return "请输入搜索关键词"
-    result = search_note({"key_word": key_word})
-    if "未找到" in result or "出错" in result:
+    status_code, result = search_note({"key_word": key_word})
+    if status_code == "not_found":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=result)
+    if status_code == "error":
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result)
     return {"message": result}
 
@@ -270,4 +307,9 @@ def search_server(key_word: str | None = None):
 # 删除某条笔记
 @app.delete("/notes/{note_id}")
 def delete_server(note_id: int):
-    return del_note(note_id)
+    status_code, result = del_note({"id": note_id})
+    if status_code == "not_found":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=result)
+    if status_code == "error":
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result)
+    return {"message": result}
